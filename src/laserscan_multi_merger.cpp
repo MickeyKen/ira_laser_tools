@@ -3,7 +3,7 @@
 #include <tf/transform_listener.h>
 #include <pcl_ros/transforms.h>
 #include <laser_geometry/laser_geometry.h>
-#include <pcl/conversions.h>
+#include <pcl/ros/conversions.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/io/pcd_io.h>
@@ -77,10 +77,12 @@ void LaserscanMerger::laserscan_topic_parser()
     istringstream iss(laserscan_topics);
 	vector<string> tokens;
 	copy(istream_iterator<string>(iss), istream_iterator<string>(), back_inserter<vector<string> >(tokens));
+
 	vector<string> tmp_input_topics;
+
 	for(int i=0;i<tokens.size();++i)
 	{
-        for(int j=0;j<topics.size();++j)
+	        for(int j=0;j<topics.size();++j)
 		{
 			if( (tokens[i].compare(topics[j].name) == 0) && (topics[j].datatype.compare("sensor_msgs/LaserScan") == 0) )
 			{
@@ -125,22 +127,17 @@ LaserscanMerger::LaserscanMerger()
 {
 	ros::NodeHandle nh("~");
 
-    nh.param<std::string>("destination_frame", destination_frame, "cart_frame");
-    nh.param<std::string>("cloud_destination_topic", cloud_destination_topic, "/merged_cloud");
-    nh.param<std::string>("scan_destination_topic", scan_destination_topic, "/scan_multi");
-    nh.param<std::string>("laserscan_topics", laserscan_topics, "");
-    nh.param("angle_min", angle_min, -2.36);
-    nh.param("angle_max", angle_max, 2.36);
-    nh.param("angle_increment", angle_increment, 0.0058);
-    nh.param("scan_time", scan_time, 0.0333333);
-    nh.param("range_min", range_min, 0.45);
-    nh.param("range_max", range_max, 25.0);
+	nh.getParam("destination_frame", destination_frame);
+	nh.getParam("cloud_destination_topic", cloud_destination_topic);
+	nh.getParam("scan_destination_topic", scan_destination_topic);
+    nh.getParam("laserscan_topics", laserscan_topics);
 
     this->laserscan_topic_parser();
 
 	point_cloud_publisher_ = node_.advertise<sensor_msgs::PointCloud2> (cloud_destination_topic.c_str(), 1, false);
 	laser_scan_publisher_ = node_.advertise<sensor_msgs::LaserScan> (scan_destination_topic.c_str(), 1, false);
 
+	tfListener_.setExtrapolationLimit(ros::Duration(0.1));
 }
 
 void LaserscanMerger::scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan, std::string topic)
@@ -150,7 +147,8 @@ void LaserscanMerger::scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan,
 
     // Verify that TF knows how to transform from the received scan to the destination scan frame
 	tfListener_.waitForTransform(scan->header.frame_id.c_str(), destination_frame.c_str(), scan->header.stamp, ros::Duration(1));
-    projector_.transformLaserScanToPointCloud(scan->header.frame_id, *scan, tmpCloud1, tfListener_, laser_geometry::channel_option::Distance);
+
+	projector_.transformLaserScanToPointCloud(scan->header.frame_id, *scan, tmpCloud1, tfListener_);
 	try
 	{
 		tfListener_.transformPointCloud(destination_frame.c_str(), tmpCloud1, tmpCloud2);
